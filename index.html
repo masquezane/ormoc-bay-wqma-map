@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ormoc Bay WQMA Establishments Map</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Source+Sans+3:wght@400;600;700&family=Source+Serif+4:opsz,wght@8..60,600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<style>
+/* Layout: fixed sidebar (summary, filters, list) beside a full-height vector map. Single light theme, survey-map palette. */
+:root{
+  --paper:#f4f2ec; --land:#efeee8; --sea:#dfeaf0; --ink:#1d2a33; --muted:#5d6b74; --line:#d4d7d2;
+  --water:#1f6fae; --buffer:#7fb3d9; --marine:#14365a; --accent:#1f6fae;
+  --c-extract:#a0522d; --c-infra:#5b5aa6; --c-tour:#c99a06; --c-heavy:#c0392b;
+  --display:"Source Serif 4", Georgia, serif; --body:"Source Sans 3", "Segoe UI", Arial, sans-serif;
+  color-scheme: light;
+}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{background:var(--paper);color:var(--ink);font:14px/1.45 var(--body);display:grid;grid-template-columns:360px 1fr;grid-template-rows:100%}
+aside{display:flex;flex-direction:column;border-right:1px solid var(--line);min-height:0;background:var(--paper)}
+.head{padding:16px 18px 12px;border-bottom:1px solid var(--line);display:grid;gap:6px}
+h1{font:600 21px/1.2 var(--display);margin:0;text-wrap:balance}
+.sub{color:var(--muted);font-size:12.5px;margin:0}
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-top:6px}
+.stat{background:#fff;border:1px solid var(--line);border-radius:6px;padding:6px 8px}
+.stat b{display:block;font-size:18px;font-variant-numeric:tabular-nums}
+.stat span{font-size:11px;color:var(--muted)}
+.filters{padding:12px 18px;border-bottom:1px solid var(--line);display:grid;gap:10px}
+.filters label.lbl{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:600}
+#q{width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:6px;font:inherit;background:#fff}
+#q:focus-visible,button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{border:1px solid var(--line);background:#fff;border-radius:999px;padding:4px 10px;font:inherit;font-size:12.5px;cursor:pointer;display:inline-flex;align-items:center;gap:6px;color:var(--ink)}
+.chip[aria-pressed="false"]{opacity:.45;background:transparent}
+.dot{width:10px;height:10px;border-radius:50%;display:inline-block;border:1.5px solid #fff;box-shadow:0 0 0 1px rgba(0,0,0,.25)}
+.count{font-size:12px;color:var(--muted)}
+#list{overflow:auto;flex:1;min-height:0;padding:4px 0;margin:0;list-style:none}
+#list li{padding:8px 18px;border-bottom:1px solid #e7e7e1;cursor:pointer;display:grid;grid-template-columns:12px 1fr;gap:8px;align-items:start}
+#list li:hover,#list li:focus-visible{background:#fff;outline:none}
+#list .n{font-weight:600;font-size:13px;line-height:1.3}
+#list .m{font-size:11.5px;color:var(--muted)}
+#list .dot{margin-top:4px}
+#map{height:100%;background:var(--sea)}
+.legend{background:rgba(255,255,255,.95);border:1px solid var(--line);border-radius:8px;padding:10px 12px;font:12px/1.5 var(--body);color:var(--ink);display:grid;gap:3px;min-width:190px}
+.legend h3{margin:0 0 2px;font:600 12px var(--body);text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
+.legend .row{display:flex;align-items:center;gap:8px;cursor:pointer;user-select:none}
+.legend input{margin:0}
+.sw{width:22px;height:10px;display:inline-block}
+.pl{font:600 11px var(--body);color:#3b464d;text-shadow:0 0 3px #fff,0 0 3px #fff,0 0 2px #fff;white-space:nowrap}
+.pl.t{font-size:13px;font-weight:700;color:#1d2a33;letter-spacing:.02em}
+.pl.v{display:none;font-weight:400;font-size:10.5px;color:#6b767c}
+.showv .pl.v{display:block}
+.rl{font:italic 600 11px var(--body);color:var(--water);text-shadow:0 0 3px #fff,0 0 3px #fff;white-space:nowrap}
+.pop h4{margin:0 0 4px;font:600 15px/1.25 var(--display)}
+.pop .pp{color:var(--muted);margin:0 0 8px;font-size:12.5px}
+.pop table{border-collapse:collapse;font-size:12.5px}
+.pop td{padding:2px 8px 2px 0;vertical-align:top}
+.pop td:first-child{color:var(--muted);white-space:nowrap}
+.pill{display:inline-block;padding:1px 8px;border-radius:999px;font-size:11.5px;font-weight:600;color:#fff}
+.note{font-size:11px;color:var(--muted);padding:8px 18px;border-top:1px solid var(--line)}
+.note a{color:var(--accent)}
+@media (max-width:760px){
+  body{grid-template-columns:1fr;grid-template-rows:auto 60vh}
+  body{overflow:auto;height:auto}
+  aside{order:2;border-right:0;border-top:1px solid var(--line)}
+  #map{order:1;height:60vh}
+  #list{max-height:50vh}
+  .legend{min-width:0}
+}
+@media (prefers-reduced-motion:reduce){.leaflet-zoom-anim .leaflet-zoom-animated{transition:none!important}}
+/* Leaflet essentials (inlined) */
+.leaflet-pane,.leaflet-tile,.leaflet-marker-icon,.leaflet-marker-shadow,.leaflet-tile-container,.leaflet-pane>svg,.leaflet-pane>canvas,.leaflet-zoom-box,.leaflet-image-layer,.leaflet-layer{position:absolute;left:0;top:0}
+.leaflet-container{overflow:hidden;-webkit-tap-highlight-color:transparent;font-family:var(--body);outline-offset:1px}
+.leaflet-container .leaflet-overlay-pane svg{max-width:none!important;max-height:none!important}
+.leaflet-pane{z-index:400}.leaflet-tile-pane{z-index:200}.leaflet-overlay-pane{z-index:400}.leaflet-shadow-pane{z-index:500}.leaflet-marker-pane{z-index:600}.leaflet-tooltip-pane{z-index:650}.leaflet-popup-pane{z-index:700}
+.leaflet-map-pane canvas{z-index:100}.leaflet-map-pane svg{z-index:200}
+.leaflet-control{position:relative;z-index:800;pointer-events:auto;float:left;clear:both}
+.leaflet-top,.leaflet-bottom{position:absolute;z-index:1000;pointer-events:none}
+.leaflet-top{top:0}.leaflet-right{right:0}.leaflet-bottom{bottom:0}.leaflet-left{left:0}
+.leaflet-right .leaflet-control{float:right}
+.leaflet-top .leaflet-control{margin-top:10px}.leaflet-bottom .leaflet-control{margin-bottom:10px}.leaflet-left .leaflet-control{margin-left:10px}.leaflet-right .leaflet-control{margin-right:10px}
+.leaflet-zoom-animated{transform-origin:0 0}
+.leaflet-zoom-anim .leaflet-zoom-animated{transition:transform .25s cubic-bezier(0,0,.25,1)}
+.leaflet-zoom-anim .leaflet-zoom-hide{visibility:hidden}
+.leaflet-grab{cursor:grab}.leaflet-dragging .leaflet-grab,.leaflet-dragging .leaflet-grab .leaflet-interactive{cursor:grabbing}
+.leaflet-marker-icon,.leaflet-marker-shadow,.leaflet-image-layer,.leaflet-pane>svg path,.leaflet-tile-container{pointer-events:none}
+.leaflet-marker-icon.leaflet-interactive,.leaflet-pane>svg path.leaflet-interactive{pointer-events:visiblePainted;pointer-events:auto;cursor:pointer}
+.leaflet-bar{box-shadow:0 1px 5px rgba(0,0,0,.25);border-radius:6px}
+.leaflet-bar a{display:block;width:32px;height:32px;line-height:30px;text-align:center;text-decoration:none;background:#fff;border-bottom:1px solid #ccc;color:var(--ink);font:600 18px var(--body)}
+.leaflet-bar a:first-child{border-radius:6px 6px 0 0}.leaflet-bar a:last-child{border-radius:0 0 6px 6px;border-bottom:0}
+.leaflet-bar a:hover{background:#f2f2f2}
+.leaflet-popup{position:absolute;text-align:center;margin-bottom:20px}
+.leaflet-popup-content-wrapper{padding:1px;text-align:left;border-radius:10px;background:#fff;box-shadow:0 3px 14px rgba(0,0,0,.3)}
+.leaflet-popup-content{margin:14px 22px 14px 16px;line-height:1.35;font-size:13px;min-height:1px}
+.leaflet-popup-tip-container{width:40px;height:20px;position:absolute;left:50%;margin-top:-1px;margin-left:-20px;overflow:hidden;pointer-events:none}
+.leaflet-popup-tip{width:17px;height:17px;padding:1px;margin:-10px auto 0;transform:rotate(45deg);background:#fff;box-shadow:0 3px 14px rgba(0,0,0,.3)}
+.leaflet-container a.leaflet-popup-close-button{position:absolute;top:2px;right:2px;width:24px;height:24px;font:18px/24px var(--body);color:#757575;text-decoration:none;text-align:center}
+.leaflet-tooltip{position:absolute;padding:3px 7px;background:#fff;border-radius:4px;white-space:nowrap;pointer-events:none;box-shadow:0 1px 3px rgba(0,0,0,.35);font-size:12px;color:var(--ink)}
+.leaflet-tooltip.lbl0{background:transparent;box-shadow:none;padding:0}
+.leaflet-control-scale-line{border:2px solid #555;border-top:none;line-height:1.1;padding:2px 5px 1px;white-space:nowrap;background:rgba(255,255,255,.85);font-size:11px;box-sizing:border-box}
+.leaflet-control-attribution{background:rgba(255,255,255,.85);padding:0 6px;font-size:11px;margin:0!important}
+.leaflet-control-attribution a{color:var(--accent)}
+.leaflet-div-icon{background:none;border:0}
+</style>
+</head>
+<body>
+<aside>
+  <div class="head">
+    <h1>Establishments within 5 km of Ormoc Bay WQMA waters</h1>
+    <p class="sub">Albuera, Ormoc City and Merida, Leyte. Screened against six river lines and six marine monitoring stations.</p>
+    <div class="stats" id="stats"></div>
+  </div>
+  <div class="filters">
+    <label class="lbl" for="q">Search</label>
+    <input id="q" type="search" placeholder="Project, proponent, ECC no., barangay">
+    <span class="lbl" id="lbl-muni">Municipality</span>
+    <div class="chips" id="muni" role="group" aria-labelledby="lbl-muni"></div>
+    <span class="lbl" id="lbl-type">Project type</span>
+    <div class="chips" id="types" role="group" aria-labelledby="lbl-type"></div>
+    <div class="count" id="count"></div>
+  </div>
+  <ul id="list" aria-label="Establishments"></ul>
+  <div class="note">Distances are straight-line to the nearest point on the river centreline or to the marine station. River lines © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap contributors</a> (ODbL). Basemaps: OpenStreetMap, Esri World Imagery, OpenTopoMap. Establishments: DENR universe list, revised Nov 2026.</div>
+</aside>
+<div id="map" role="region" aria-label="Map of establishments, rivers and marine stations"></div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="data.js"></script>
+<script>
+const TYPES={
+  "Resource Extractive":{c:"#a0522d",s:"Resource extractive"},
+  "Infrastructure Projects":{c:"#5b5aa6",s:"Infrastructure"},
+  "Golf course and other tourism projects":{c:"#c99a06",s:"Golf & tourism"},
+  "Heavy and other processing/manufacturing industries":{c:"#c0392b",s:"Heavy industry & processing"}
+};
+const RIVERC="#1f6fae", MARINE="#14365a";
+const esc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const typeColor=t=>(TYPES[t]||{c:"#666"}).c;
+
+function dec(s){const p=[];let i=0,la=0,lo=0;while(i<s.length){for(let k=0;k<2;k++){let sh=0,r=0,b;do{b=s.charCodeAt(i++)-63;r|=(b&31)<<sh;sh+=5}while(b>=32);const v=(r&1)?~(r>>1):(r>>1);k?lo+=v:la+=v}p.push([la/1e5,lo/1e5])}return p}
+function expand(X){
+  const bits=(m,names)=>names.filter((n,i)=>m&(1<<i)).join(", ");
+  const D={rivers:{},riverBuffer:X.B.map(dec),stations:X.S.map(([name,m,lat,lon])=>({name,kind:m?"marine":"river",lat,lon})),est:[]};
+  for(const k in X.R)D.rivers[k]=X.R[k].map(dec);
+  D.est=X.E.map(a=>({ref:a[0],doc:X.D.doc[a[1]],name:a[2],prop:a[3],type:X.D.type[a[4]],spec:X.D.spec[a[5]],sub:X.D.sub[a[6]],addr:a[7],muni:X.D.muni[a[8]],lat:a[9],lon:a[10],status:X.D.status[a[11]],nr:X.D.nr[a[12]],nrd:a[13],rivs:bits(a[14],X.RN),nm:X.D.nm[a[15]],nmd:a[16],mars:bits(a[17],X.MN)}));
+  return D;
+}
+if(window.DATA){init(expand(window.DATA))}else{document.getElementById("map").innerHTML='<p style="padding:20px">The map data could not load. Reload the page to try again.</p>'}
+
+function init(D){
+  const map=L.map("map",{zoomControl:true,preferCanvas:false,minZoom:10,maxZoom:18,attributionControl:true});
+  map.attributionControl.setPrefix(false);
+  L.control.scale({imperial:false,maxWidth:160}).addTo(map);
+  map.createPane("buf").style.zIndex=350;
+
+  // Online basemaps (GitHub Pages can load map tiles)
+  const osm=L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:19,attribution:'&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'}).addTo(map);
+  const sat=L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",{maxZoom:19,attribution:"Imagery &copy; Esri, Maxar, Earthstar Geographics"});
+  const topo=L.tileLayer("https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png",{maxZoom:17,attribution:'&copy; <a href="https://opentopomap.org">OpenTopoMap</a> (CC-BY-SA)'});
+  L.control.layers({"Street map":osm,"Satellite":sat,"Topographic":topo},null,{position:"bottomright",collapsed:false}).addTo(map);
+
+  // Buffers
+  const rBuf=L.polygon(D.riverBuffer,{pane:"buf",color:RIVERC,weight:1,dashArray:"4 4",fillColor:"#7fb3d9",fillOpacity:.16,interactive:false}).addTo(map);
+  const mBuf=L.layerGroup().addTo(map);
+  D.stations.filter(s=>s.kind==="marine").forEach(s=>L.circle([s.lat,s.lon],{pane:"buf",radius:5000,color:MARINE,weight:1,dashArray:"2 5",fill:true,fillColor:MARINE,fillOpacity:.05,interactive:false}).addTo(mBuf));
+
+  // Rivers
+  const rivers=L.layerGroup().addTo(map);
+  Object.entries(D.rivers).forEach(([name,lines])=>{
+    const g=L.polyline(lines,{color:RIVERC,weight:2.4,opacity:.9}).bindTooltip(name,{sticky:true}).addTo(rivers);
+  });
+
+  // Stations
+  const stations=L.layerGroup().addTo(map);
+  D.stations.forEach(s=>{
+    const isM=s.kind==="marine";
+    const html=isM
+      ?`<svg width="18" height="16" viewBox="0 0 18 16"><polygon points="9,1 17,15 1,15" fill="${MARINE}" stroke="#fff" stroke-width="1.5"/></svg>`
+      :`<svg width="14" height="14" viewBox="0 0 14 14"><rect x="1.5" y="1.5" width="11" height="11" fill="#fff" stroke="${RIVERC}" stroke-width="2.5"/></svg>`;
+    L.marker([s.lat,s.lon],{icon:L.divIcon({className:"",html,iconSize:isM?[18,16]:[14,14],iconAnchor:isM?[9,10]:[7,7]}),zIndexOffset:500,title:s.name})
+      .bindTooltip(`<b>${esc(s.name)}</b><br>${isM?"Marine water station · 5 km radius shown":"Freshwater (river) station"}`,{direction:"top",offset:[0,-8]})
+      .addTo(stations);
+  });
+
+  // Establishments
+  const estLayer=L.layerGroup().addTo(map);
+  D.est.forEach((e,i)=>{
+    e.i=i;
+    e.marker=L.circleMarker([e.lat,e.lon],{radius:6,color:"#fff",weight:1.5,fillColor:typeColor(e.type),fillOpacity:.95})
+      .bindPopup(()=>popup(e),{maxWidth:340,autoPanPadding:[30,30]})
+      .bindTooltip(esc(e.name),{direction:"top",offset:[0,-6]});
+  });
+
+  function popup(e){
+    const c=typeColor(e.type);
+    const row=(k,v)=>v?`<tr><td>${k}</td><td>${esc(v)}</td></tr>`:"";
+    return `<div class="pop"><h4>${esc(e.name)}</h4><p class="pp">${esc(e.prop)}</p>
+      <p style="margin:0 0 8px"><span class="pill" style="background:${c}">${esc((TYPES[e.type]||{s:e.type}).s)}</span></p>
+      <table>
+      ${row("ECC / CNC",[e.doc,e.ref].filter(Boolean).join(" · "))}
+      ${row("Specific type",e.spec)}
+      ${row("Subtype",e.sub)}
+      ${row("Address",[e.addr,e.muni].filter(Boolean).join(", "))}
+      ${row("Status",e.status)}
+      ${row("Nearest river",`${e.nr} · ${e.nrd.toFixed(2)} km`)}
+      ${row("Rivers ≤ 5 km",e.rivs)}
+      ${row("Nearest marine stn",`${e.nm} · ${e.nmd.toFixed(2)} km`)}
+      ${row("Marine stns ≤ 5 km",e.mars||"None")}
+      ${row("Coordinates",`${e.lat.toFixed(5)}, ${e.lon.toFixed(5)}`)}
+      </table></div>`;
+  }
+
+  // Filters
+  const munis=["Ormoc City","Albuera","Merida"];
+  const st={m:new Set(munis),t:new Set(Object.keys(TYPES)),q:""};
+  const mEl=document.getElementById("muni"), tEl=document.getElementById("types");
+  munis.forEach(m=>mEl.append(chip(m,null,()=>toggle(st.m,m))));
+  Object.entries(TYPES).forEach(([t,v])=>tEl.append(chip(v.s,v.c,()=>toggle(st.t,t))));
+  function chip(label,color,fn){
+    const b=document.createElement("button");b.type="button";b.className="chip";b.setAttribute("aria-pressed","true");
+    b.innerHTML=(color?`<span class="dot" style="background:${color}"></span>`:"")+esc(label);
+    b.onclick=()=>{fn();b.setAttribute("aria-pressed",b.getAttribute("aria-pressed")==="true"?"false":"true");render()};
+    return b;
+  }
+  function toggle(set,v){set.has(v)?set.delete(v):set.add(v)}
+  document.getElementById("q").addEventListener("input",ev=>{st.q=ev.target.value.trim().toLowerCase();render()});
+
+  const statsEl=document.getElementById("stats");
+  const n=D.est.length, nO=D.est.filter(e=>e.muni==="Ormoc City").length, nA=D.est.filter(e=>e.muni==="Albuera").length, nM=D.est.filter(e=>e.muni==="Merida").length;
+  statsEl.innerHTML=[[n,"Total"],[nO,"Ormoc City"],[nA,"Albuera"],[nM,"Merida"]].map(([v,l])=>`<div class="stat"><b>${v}</b><span>${l}</span></div>`).join("");
+
+  const listEl=document.getElementById("list"), countEl=document.getElementById("count");
+  function render(){
+    estLayer.clearLayers(); listEl.innerHTML="";
+    const shown=D.est.filter(e=>st.m.has(e.muni)&&st.t.has(e.type)&&(!st.q||[e.name,e.prop,e.ref,e.addr,e.spec,e.sub,e.nr].join(" ").toLowerCase().includes(st.q)))
+      .sort((a,b)=>a.name.localeCompare(b.name));
+    const frag=document.createDocumentFragment();
+    shown.forEach(e=>{
+      e.marker.addTo(estLayer);
+      const li=document.createElement("li");li.tabIndex=0;
+      li.innerHTML=`<span class="dot" style="background:${typeColor(e.type)}"></span><div><div class="n">${esc(e.name)}</div><div class="m">${esc(e.prop)}<br>${esc(e.addr?e.addr+", ":"")}${esc(e.muni)} · ${esc(e.nr)} ${e.nrd.toFixed(1)} km</div></div>`;
+      const go=()=>{map.setView([e.lat,e.lon],Math.max(map.getZoom(),15));e.marker.openPopup()};
+      li.onclick=go; li.onkeydown=ev=>{if(ev.key==="Enter"||ev.key===" "){ev.preventDefault();go()}};
+      frag.append(li);
+    });
+    listEl.append(frag);
+    countEl.textContent=`Showing ${shown.length} of ${D.est.length} establishments`;
+  }
+  render();
+
+  // Legend with layer toggles
+  const legend=L.control({position:"topright"});
+  legend.onAdd=()=>{
+    const d=L.DomUtil.create("div","legend");
+    const items=[
+      ["Establishments",estLayer,`<span class="dot" style="background:#a0522d"></span>`],
+      ["River line (OSM)",rivers,`<span class="sw" style="border-top:3px solid ${RIVERC};height:0"></span>`],
+      ["5 km from rivers",rBuf,`<span class="sw" style="background:rgba(127,179,217,.35);border:1px dashed ${RIVERC}"></span>`],
+      ["Monitoring stations",stations,`<svg width="14" height="12" viewBox="0 0 18 16"><polygon points="9,1 17,15 1,15" fill="${MARINE}"/></svg><svg width="11" height="11" viewBox="0 0 14 14"><rect x="1.5" y="1.5" width="11" height="11" fill="#fff" stroke="${RIVERC}" stroke-width="2.5"/></svg>`],
+      ["5 km from marine stns",mBuf,`<span class="sw" style="border:1px dashed ${MARINE};border-radius:6px"></span>`]
+    ];
+    d.innerHTML="<h3>Layers</h3>";
+    items.forEach(([lab,layer,sym],i)=>{
+      const id="lyr"+i;
+      const r=L.DomUtil.create("label","row",d); r.htmlFor=id;
+      r.innerHTML=`<input type="checkbox" id="${id}" ${map.hasLayer(layer)?"checked":""}> ${sym} ${lab}`;
+      r.querySelector("input").addEventListener("change",ev=>ev.target.checked?map.addLayer(layer):map.removeLayer(layer));
+    });
+    L.DomEvent.disableClickPropagation(d); L.DomEvent.disableScrollPropagation(d);
+    return d;
+  };
+  legend.addTo(map);
+
+  map.fitBounds(L.latLngBounds(D.est.map(e=>[e.lat,e.lon])).pad(0.08));
+}
+</script>
+</body>
+</html>
