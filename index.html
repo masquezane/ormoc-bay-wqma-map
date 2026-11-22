@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Ormoc Bay WQMA Establishments Map</title>
+<title>Ormoc Bay WQMA: Establishments, Discharge Permits &amp; Household Density</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Source+Sans+3:wght@400;600;700&family=Source+Serif+4:opsz,wght@8..60,600&display=swap" rel="stylesheet">
@@ -48,6 +48,8 @@ h1{font:600 21px/1.2 var(--display);margin:0;text-wrap:balance}
 .legend h3{margin:0 0 2px;font:600 12px var(--body);text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
 .legend .row{display:flex;align-items:center;gap:8px;cursor:pointer;user-select:none}
 .legend input{margin:0}
+.legend .dk{display:grid;grid-template-columns:repeat(5,1fr);gap:0;margin:2px 0 0 22px;font-size:10.5px;color:var(--muted);text-align:center}
+.legend .dk i{display:block;height:9px}
 .sw{width:22px;height:10px;display:inline-block}
 .pl{font:600 11px var(--body);color:#3b464d;text-shadow:0 0 3px #fff,0 0 3px #fff,0 0 2px #fff;white-space:nowrap}
 .pl.t{font-size:13px;font-weight:700;color:#1d2a33;letter-spacing:.02em}
@@ -119,8 +121,8 @@ h1{font:600 21px/1.2 var(--display);margin:0;text-wrap:balance}
 <body>
 <aside>
   <div class="head">
-    <h1>Establishments within 5 km of Ormoc Bay WQMA waters</h1>
-    <p class="sub">Albuera, Ormoc City and Merida, Leyte. Screened against six river lines and six marine monitoring stations.</p>
+    <h1>Ormoc Bay WQMA: Establishments, Discharge Permits &amp; Household Density</h1>
+    <p class="sub">Albuera, Ormoc City and Merida, Leyte. Establishments within 5 km of six river lines and six marine monitoring stations, with OPMS discharge permit status, wastewater treatment and a structure density layer.</p>
     <div class="stats" id="stats"></div>
     <div class="stats dp" id="dpstats"></div>
   </div>
@@ -142,13 +144,14 @@ h1{font:600 21px/1.2 var(--display);margin:0;text-wrap:balance}
     <div class="count" id="count"></div>
   </div>
   <ul id="list" aria-label="Establishments"></ul>
-  <div class="note">Distances are straight-line to the nearest point on the river centreline or to the marine station. River lines © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap contributors</a> (ODbL). Basemaps: OpenStreetMap, Esri World Imagery, OpenTopoMap. Establishments: DENR universe list, revised Nov 2026. Permit status and wastewater treatment details (septic tank, treatment stages, discharge) from EMB OPMS discharge permit records, as of 22 Nov 2026, matched by proponent name (unmatched establishments show as "No DP found").</div>
+  <div class="note">Distances are straight-line to the nearest point on the river centreline or to the marine station. River lines © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap contributors</a> (ODbL). Basemaps: OpenStreetMap, Esri World Imagery, OpenTopoMap. Establishments: DENR universe list, revised Nov 2026. Permit status and wastewater treatment details (septic tank, treatment stages, discharge) from EMB OPMS discharge permit records, as of 22 Nov 2026, matched by proponent name (unmatched establishments show as "No DP found"). Household / structure density: count of OpenStreetMap building footprints per 250 m hexagon (about 5.4 ha), downloaded 22 Nov 2026; mapping in OSM is incomplete in places, so treat it as relative density, not a census count.</div>
 </aside>
 <div id="map" role="region" aria-label="Map of establishments, rivers and marine stations"></div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <script src="data.js"></script>
 <script src="opms.js"></script>
 <script src="wwtp.js"></script>
+<script src="hex.js"></script>
 <script>
 const TYPES={
   "Resource Extractive":{c:"#a0522d",s:"Resource extractive"},
@@ -198,6 +201,27 @@ function init(D){
   const mBuf=L.layerGroup().addTo(map);
   D.stations.filter(s=>s.kind==="marine").forEach(s=>L.circle([s.lat,s.lon],{pane:"buf",radius:5000,color:MARINE,weight:1,dashArray:"2 5",fill:true,fillColor:MARINE,fillOpacity:.05,interactive:false}).addTo(mBuf));
 
+  // Household / structure density (OSM building footprints per 250 m hexagon)
+  map.createPane("dens").style.zIndex=340;
+  const DENS_C=["#ffffb2","#fecc5c","#fd8d3c","#f03b20","#bd0026"], DENS_B=[10,50,150,300];
+  const DENS_L=["1–10","11–50","51–150","151–300","300+"];
+  const densCls=c=>c<=10?0:c<=50?1:c<=150?2:c<=300?3:4;
+  const hexLayer=L.layerGroup();
+  if(window.HEX){
+    const H=window.HEX, ren=L.canvas({pane:"dens",padding:.3});
+    const corners=[...Array(6)].map((_,i)=>[Math.cos((30+60*i)*Math.PI/180)*H.R,Math.sin((30+60*i)*Math.PI/180)*H.R]);
+    H.rows.split("|").forEach(row=>{
+      const [rs,qs,body]=row.split(":");const r=parseInt(rs,36);let q=parseInt(qs,36);
+      body.replace(/~([0-9a-z]+)~/g,(m,k)=>",".repeat(parseInt(k,36)+1)).split(",").forEach(v=>{
+        if(v){const c=parseInt(v,36),x=H.R*Math.sqrt(3)*(q+r/2),y=H.R*1.5*r;
+          const pts=corners.map(([dx,dy])=>[H.LA0+(y+dy)/H.KY,H.LO0+(x+dx)/H.KX]);
+          L.polygon(pts,{renderer:ren,pane:"dens",stroke:false,fillColor:DENS_C[densCls(c)],fillOpacity:.55,bubblingMouseEvents:false})
+            .bindTooltip(`≈${c} structure${c>1?"s":""} in this 250 m hexagon`,{sticky:true}).addTo(hexLayer)}
+        q++});
+    });
+    hexLayer.addTo(map);
+  }
+
   // Rivers
   const rivers=L.layerGroup().addTo(map);
   Object.entries(D.rivers).forEach(([name,lines])=>{
@@ -218,8 +242,9 @@ function init(D){
 
   // Establishments
   const estLayer=L.layerGroup().addTo(map);
+  const EC=window.HEX?window.HEX.EC.split(";").map(x=>x.split("/").map(Number)):[];
   D.est.forEach((e,i)=>{
-    e.i=i;
+    e.i=i; e.dens=EC[i]||null;
     e.marker=L.circleMarker([e.lat,e.lon],styleOf(e))
       .bindPopup(()=>popup(e),{maxWidth:340,autoPanPadding:[30,30]})
       .bindTooltip(esc(e.name),{direction:"top",offset:[0,-6]});
@@ -248,6 +273,7 @@ function init(D){
       ${row("Rivers ≤ 5 km",e.rivs)}
       ${row("Nearest marine stn",`${e.nm} · ${e.nmd.toFixed(2)} km`)}
       ${row("Marine stns ≤ 5 km",e.mars||"None")}
+      ${e.dens?row("Structures nearby",`≈${e.dens[0].toLocaleString()} within 500 m · ≈${e.dens[1].toLocaleString()} within 1 km`):""}
       ${row("Coordinates",`${e.lat.toFixed(5)}, ${e.lon.toFixed(5)}`)}
       </table>${dpBlock(e)}</div>`;
   }
@@ -326,7 +352,8 @@ function init(D){
       ["River line (OSM)",rivers,`<span class="sw" style="border-top:3px solid ${RIVERC};height:0"></span>`],
       ["5 km from rivers",rBuf,`<span class="sw" style="background:rgba(127,179,217,.35);border:1px dashed ${RIVERC}"></span>`],
       ["Monitoring stations",stations,`<svg width="14" height="12" viewBox="0 0 18 16"><polygon points="9,1 17,15 1,15" fill="${MARINE}"/></svg><svg width="11" height="11" viewBox="0 0 14 14"><rect x="1.5" y="1.5" width="11" height="11" fill="#fff" stroke="${RIVERC}" stroke-width="2.5"/></svg>`],
-      ["5 km from marine stns",mBuf,`<span class="sw" style="border:1px dashed ${MARINE};border-radius:6px"></span>`]
+      ["5 km from marine stns",mBuf,`<span class="sw" style="border:1px dashed ${MARINE};border-radius:6px"></span>`],
+      ["Household / structure density",hexLayer,`<span class="sw" style="background:linear-gradient(90deg,${DENS_C.join(",")})"></span>`]
     ];
     d.innerHTML="<h3>Layers</h3>";
     items.forEach(([lab,layer,sym],i)=>{
@@ -335,6 +362,9 @@ function init(D){
       r.innerHTML=`<input type="checkbox" id="${id}" ${map.hasLayer(layer)?"checked":""}> ${sym} ${lab}`;
       r.querySelector("input").addEventListener("change",ev=>ev.target.checked?map.addLayer(layer):map.removeLayer(layer));
     });
+    const dk=L.DomUtil.create("div","dk",d);
+    dk.innerHTML=DENS_C.map(c=>`<i style="background:${c};opacity:.8"></i>`).join("")+DENS_L.map(l=>`<span>${l}</span>`).join("");
+    L.DomUtil.create("div","",d).innerHTML=`<span style="margin-left:22px;font-size:10.5px;color:var(--muted)">OSM structures per 250 m hexagon</span>`;
     L.DomEvent.disableClickPropagation(d); L.DomEvent.disableScrollPropagation(d);
     return d;
   };
