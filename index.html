@@ -215,7 +215,7 @@ function init(D){
       body.replace(/~([0-9a-z]+)~/g,(m,k)=>",".repeat(parseInt(k,36)+1)).split(",").forEach(v=>{
         if(v){const c=parseInt(v,36),x=H.R*Math.sqrt(3)*(q+r/2),y=H.R*1.5*r;
           const pts=corners.map(([dx,dy])=>[H.LA0+(y+dy)/H.KY,H.LO0+(x+dx)/H.KX]);
-          L.polygon(pts,{renderer:ren,pane:"dens",stroke:false,fillColor:DENS_C[densCls(c)],fillOpacity:.55,bubblingMouseEvents:false})
+          L.polygon(pts,{renderer:ren,pane:"dens",stroke:false,fillColor:DENS_C[densCls(c)],fillOpacity:1,bubblingMouseEvents:false})
             .bindTooltip(`≈${c} structure${c>1?"s":""} in this 250 m hexagon`,{sticky:true}).addTo(hexLayer)}
         q++});
     });
@@ -363,7 +363,7 @@ function init(D){
       r.querySelector("input").addEventListener("change",ev=>ev.target.checked?map.addLayer(layer):map.removeLayer(layer));
     });
     const dk=L.DomUtil.create("div","dk",d);
-    dk.innerHTML=DENS_C.map(c=>`<i style="background:${c};opacity:.8"></i>`).join("")+DENS_L.map(l=>`<span>${l}</span>`).join("");
+    dk.innerHTML=DENS_C.map(c=>`<i style="background:${c}"></i>`).join("")+DENS_L.map(l=>`<span>${l}</span>`).join("");
     L.DomUtil.create("div","",d).innerHTML=`<span style="margin-left:22px;font-size:10.5px;color:var(--muted)">OSM structures per 250 m hexagon</span>`;
     L.DomEvent.disableClickPropagation(d); L.DomEvent.disableScrollPropagation(d);
     return d;
