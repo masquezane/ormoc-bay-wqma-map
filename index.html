@@ -133,6 +133,8 @@ h1{font:600 21px/1.2 var(--display);margin:0;text-wrap:balance}
     <div class="chips" id="types" role="group" aria-labelledby="lbl-type"></div>
     <span class="lbl" id="lbl-dp">Discharge permit status (OPMS)</span>
     <div class="chips" id="dpst" role="group" aria-labelledby="lbl-dp"></div>
+    <span class="lbl" id="lbl-ww">Wastewater treatment (latest DP)</span>
+    <div class="chips" id="wwst" role="group" aria-labelledby="lbl-ww"></div>
     <label class="chk" for="pendOnly"><input type="checkbox" id="pendOnly"> Only establishments with a pending OPMS application</label>
     <span class="lbl" id="lbl-col">Colour dots by</span>
     <div class="chips" id="colorby" role="group" aria-labelledby="lbl-col"></div>
@@ -140,12 +142,13 @@ h1{font:600 21px/1.2 var(--display);margin:0;text-wrap:balance}
     <div class="count" id="count"></div>
   </div>
   <ul id="list" aria-label="Establishments"></ul>
-  <div class="note">Distances are straight-line to the nearest point on the river centreline or to the marine station. River lines © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap contributors</a> (ODbL). Basemaps: OpenStreetMap, Esri World Imagery, OpenTopoMap. Establishments: DENR universe list, revised Nov 2026. Permit status: EMB OPMS, approved and pending records as of 22 Nov 2026, matched by proponent name (unmatched establishments show as "No DP found").</div>
+  <div class="note">Distances are straight-line to the nearest point on the river centreline or to the marine station. River lines © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap contributors</a> (ODbL). Basemaps: OpenStreetMap, Esri World Imagery, OpenTopoMap. Establishments: DENR universe list, revised Nov 2026. Permit status and wastewater treatment details (septic tank, treatment stages, discharge) from EMB OPMS discharge permit records, as of 22 Nov 2026, matched by proponent name (unmatched establishments show as "No DP found").</div>
 </aside>
 <div id="map" role="region" aria-label="Map of establishments, rivers and marine stations"></div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <script src="data.js"></script>
 <script src="opms.js"></script>
+<script src="wwtp.js"></script>
 <script>
 const TYPES={
   "Resource Extractive":{c:"#a0522d",s:"Resource extractive"},
@@ -157,6 +160,9 @@ const RIVERC="#1f6fae", MARINE="#14365a";
 const DPC={Valid:"#2e9e5b",Expired:"#d0342c",None:"#8a8f94"};
 const DPL={Valid:"Valid DP",Expired:"Expired DP",None:"No DP found"};
 const OPMS="https://opms.emb.gov.ph/application/";
+const WWC={S:"#1b7f8c",T:"#8e5ab5",P:"#d9822b",N:"#3d3d3d",X:"#c4c7c9"};
+const WWL={S:"Primary + secondary treatment (WWTP/STP)",T:"Septic tank system",P:"Primary treatment only",N:"No treatment system",X:"No DP data"};
+const SPL={Y:"Yes",R:"Mentioned in EMB remarks only",N:"Not stated in DP",X:"No DP data"};
 let colorMode="dp";
 const esc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 const typeColor=t=>(TYPES[t]||{c:"#666"}).c;
@@ -169,10 +175,11 @@ function expand(X){
   D.est=X.E.map(a=>({ref:a[0],doc:X.D.doc[a[1]],name:a[2],prop:a[3],type:X.D.type[a[4]],spec:X.D.spec[a[5]],sub:X.D.sub[a[6]],addr:a[7],muni:X.D.muni[a[8]],lat:a[9],lon:a[10],status:X.D.status[a[11]],nr:X.D.nr[a[12]],nrd:a[13],rivs:bits(a[14],X.RN),nm:X.D.nm[a[15]],nmd:a[16],mars:bits(a[17],X.MN)}));
   D.est.forEach((e,i)=>{const o=(X.O||{})[i];e.dp=o?{st:o[0]==="V"?"Valid":"Expired",cert:o[1],ap:o[2],ex:o[3],n:o[4],app:o[5]}:{st:"None"};
     e.pend=((X.PN||{})[i]||[]).map(([a,t,s])=>({app:a,type:t,st:s==="I"?"In-process (EMB)":"Pending (applicant)"}));});
+  D.est.forEach(e=>{const w=e.dp.app&&(X.WW||{})[e.dp.app];e.ww=w?{c:w[0],sp:w[1],cap:w[2],inv:w[3],pri:w[4],che:w[5],sec:w[6],dto:w[7],vol:w[8],recv:w[9],out:w[10]}:{c:"X",sp:"X"}});
   D.asof=X.ASOF;
   return D;
 }
-if(window.DATA){if(window.OPMS)Object.assign(window.DATA,window.OPMS);init(expand(window.DATA))}else{document.getElementById("map").innerHTML='<p style="padding:20px">The map data could not load. Reload the page to try again.</p>'}
+if(window.DATA){if(window.OPMS)Object.assign(window.DATA,window.OPMS);if(window.WWTP)window.DATA.WW=window.WWTP;init(expand(window.DATA))}else{document.getElementById("map").innerHTML='<p style="padding:20px">The map data could not load. Reload the page to try again.</p>'}
 
 function init(D){
   const map=L.map("map",{zoomControl:true,preferCanvas:false,minZoom:10,maxZoom:18,attributionControl:true});
@@ -218,10 +225,12 @@ function init(D){
       .bindTooltip(esc(e.name),{direction:"top",offset:[0,-6]});
   });
 
-  function styleOf(e){const p=e.pend.length>0;return {radius:p?7:6,color:p?"#f29d0b":"#fff",weight:p?3:1.5,fillColor:colorMode==="dp"?DPC[e.dp.st]:typeColor(e.type),fillOpacity:.95}}
+  function styleOf(e){const p=e.pend.length>0;return {radius:p?7:6,color:p?"#f29d0b":"#fff",weight:p?3:1.5,fillColor:colorOf(e),fillOpacity:.95}}
+  function colorOf(e){return colorMode==="dp"?DPC[e.dp.st]:colorMode==="ww"?WWC[e.ww.c]:typeColor(e.type)}
   function restyle(){D.est.forEach(e=>e.marker.setStyle(styleOf(e)));drawKey()}
   function drawKey(){const k=document.getElementById("key");
     const items=colorMode==="dp"?Object.keys(DPC).map(s=>`<span><i class="dot" style="background:${DPC[s]}"></i>${DPL[s]}</span>`)
+      :colorMode==="ww"?Object.keys(WWC).map(s=>`<span><i class="dot" style="background:${WWC[s]}"></i>${WWL[s]}</span>`)
       :Object.entries(TYPES).map(([t,v])=>`<span><i class="dot" style="background:${v.c}"></i>${esc(v.s)}</span>`);
     k.innerHTML=items.join("")+`<span><i class="ring"></i>Pending application</span>`}
   function popup(e){
@@ -249,20 +258,29 @@ function init(D){
       s+=`<span class="pill" style="background:${DPC[d.st]}">${DPL[d.st]}</span> <a href="${OPMS}${esc(d.app)}/view" target="_blank" rel="noopener">${esc(d.cert)}</a>
       <div style="margin-top:4px;font-size:12.5px">Approved ${esc(d.ap)} · Expires ${esc(d.ex)} (${days>=0?days+" days left":(-days)+" days ago"})<br>${d.n} DP record${d.n>1?"s":""} in OPMS</div>`}
     if(e.pend.length){s+=`<h5 style="margin-top:8px">Pending applications (${e.pend.length})</h5><ul>`+e.pend.slice(0,8).map(p=>`<li><a href="${OPMS}${esc(p.app)}/view" target="_blank" rel="noopener">#${esc(p.app)}</a> ${esc(p.type)} · ${esc(p.st)}</li>`).join("")+(e.pend.length>8?`<li>… ${e.pend.length-8} more</li>`:"")+`</ul>`}
-    return s+`</div>`;
+    return s+`</div>`+wwBlock(e);
+  }
+  function wwBlock(e){
+    const w=e.ww;if(w.c==="X")return "";
+    const r=(k,v)=>v&&v!=="No"?`<tr><td>${k}</td><td>${esc(v)}</td></tr>`:(v==="No"?`<tr><td>${k}</td><td>None</td></tr>`:"");
+    return `<div class="dpbox"><h5>Wastewater treatment (from DP ${esc(e.dp.cert)})</h5>
+      <span class="pill" style="background:${WWC[w.c]}">${WWL[w.c]}</span>
+      <table style="margin-top:6px">${r("Septic tank",SPL[w.sp])}${r("Capacity",w.cap)}${r("Investment",w.inv)}${r("Primary",(w.pri||"").replace(/^Yes: /,""))}${r("Chemical",(w.che||"").replace(/^Yes: /,""))}${r("Secondary",(w.sec||"").replace(/^Yes: /,""))}${r("Discharges to",w.dto)}${r("Discharge volume",w.vol)}${r("Receiving water",w.recv)}${r("Outlet",w.out)}</table></div>`;
   }
 
   // Filters
   const munis=["Ormoc City","Albuera","Merida"];
-  const st={m:new Set(munis),t:new Set(Object.keys(TYPES)),d:new Set(Object.keys(DPC)),p:false,q:""};
+  const st={m:new Set(munis),t:new Set(Object.keys(TYPES)),d:new Set(Object.keys(DPC)),w:new Set(Object.keys(WWC)),p:false,q:""};
   const mEl=document.getElementById("muni"), tEl=document.getElementById("types");
   munis.forEach(m=>mEl.append(chip(m,null,()=>toggle(st.m,m))));
   Object.entries(TYPES).forEach(([t,v])=>tEl.append(chip(v.s,v.c,()=>toggle(st.t,t))));
   const dEl=document.getElementById("dpst");
   Object.keys(DPC).forEach(s=>dEl.append(chip(DPL[s]+" ("+D.est.filter(e=>e.dp.st===s).length+")",DPC[s],()=>toggle(st.d,s))));
+  const wEl=document.getElementById("wwst");
+  Object.keys(WWC).forEach(s=>wEl.append(chip(WWL[s]+" ("+D.est.filter(e=>e.ww.c===s).length+")",WWC[s],()=>toggle(st.w,s))));
   document.getElementById("pendOnly").addEventListener("change",ev=>{st.p=ev.target.checked;render()});
   const cEl=document.getElementById("colorby");
-  [["dp","DP status"],["type","Project type"]].forEach(([m,l])=>{const b=document.createElement("button");b.type="button";b.className="chip";b.textContent=l;b.setAttribute("aria-pressed",String(m===colorMode));
+  [["dp","DP status"],["ww","Treatment type"],["type","Project type"]].forEach(([m,l])=>{const b=document.createElement("button");b.type="button";b.className="chip";b.textContent=l;b.setAttribute("aria-pressed",String(m===colorMode));
     b.onclick=()=>{colorMode=m;[...cEl.children].forEach(x=>x.setAttribute("aria-pressed",String(x===b)));restyle();render()};cEl.append(b)});
   drawKey();
   function chip(label,color,fn){
@@ -283,13 +301,13 @@ function init(D){
   const listEl=document.getElementById("list"), countEl=document.getElementById("count");
   function render(){
     estLayer.clearLayers(); listEl.innerHTML="";
-    const shown=D.est.filter(e=>st.m.has(e.muni)&&st.t.has(e.type)&&st.d.has(e.dp.st)&&(!st.p||e.pend.length)&&(!st.q||[e.name,e.prop,e.ref,e.addr,e.spec,e.sub,e.nr,e.dp.cert||""].join(" ").toLowerCase().includes(st.q)))
+    const shown=D.est.filter(e=>st.m.has(e.muni)&&st.t.has(e.type)&&st.d.has(e.dp.st)&&st.w.has(e.ww.c)&&(!st.p||e.pend.length)&&(!st.q||[e.name,e.prop,e.ref,e.addr,e.spec,e.sub,e.nr,e.dp.cert||"",e.ww.pri||"",e.ww.sec||"",e.ww.dto||"",e.ww.c!=="X"?WWL[e.ww.c]:""].join(" ").toLowerCase().includes(st.q)))
       .sort((a,b)=>a.name.localeCompare(b.name));
     const frag=document.createDocumentFragment();
     shown.forEach(e=>{
       e.marker.addTo(estLayer);
       const li=document.createElement("li");li.tabIndex=0;
-      li.innerHTML=`<span class="dot" style="background:${colorMode==="dp"?DPC[e.dp.st]:typeColor(e.type)}"></span><div><div class="n">${esc(e.name)}<span class="mini" style="background:${DPC[e.dp.st]}">${e.dp.st==="None"?"No DP":e.dp.st+" DP"}</span>${e.pend.length?`<span class="mini" style="background:#f29d0b">${e.pend.length} pending</span>`:""}</div><div class="m">${esc(e.prop)}<br>${esc(e.addr?e.addr+", ":"")}${esc(e.muni)} · ${esc(e.nr)} ${e.nrd.toFixed(1)} km</div></div>`;
+      li.innerHTML=`<span class="dot" style="background:${colorOf(e)}"></span><div><div class="n">${esc(e.name)}<span class="mini" style="background:${DPC[e.dp.st]}">${e.dp.st==="None"?"No DP":e.dp.st+" DP"}</span>${e.pend.length?`<span class="mini" style="background:#f29d0b">${e.pend.length} pending</span>`:""}</div><div class="m">${esc(e.prop)}<br>${esc(e.addr?e.addr+", ":"")}${esc(e.muni)} · ${esc(e.nr)} ${e.nrd.toFixed(1)} km</div></div>`;
       const go=()=>{map.setView([e.lat,e.lon],Math.max(map.getZoom(),15));e.marker.openPopup()};
       li.onclick=go; li.onkeydown=ev=>{if(ev.key==="Enter"||ev.key===" "){ev.preventDefault();go()}};
       frag.append(li);
